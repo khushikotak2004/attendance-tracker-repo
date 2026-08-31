@@ -1,0 +1,6 @@
+{
+  "name": "Attendance & Work Hours Tracker",
+  "description": "Mobile-friendly weekly attendance and 45-hour work-time tracker with automatic overtime adjustment and daily deficit analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
