@@ -5,17 +5,26 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { ActiveSessionWidget } from './components/ActiveSessionWidget';
-import { AttendanceEntryCard } from './components/AttendanceEntryCard';
-import { AuthModal } from './components/AuthModal';
+import {
+  Award,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  HelpCircle,
+  Layers,
+  LogIn,
+  Sliders,
+  User as UserIcon,
+} from 'lucide-react';
+import { AccountSection } from './components/AccountSection';
+import { AuthLandingGate } from './components/AuthLandingGate';
+import { ClockingLandingSection } from './components/ClockingLandingSection';
 import { EditEntryModal } from './components/EditEntryModal';
 import { Header } from './components/Header';
 import { OvertimeExplainerModal } from './components/OvertimeExplainerModal';
 import { ProfileModal } from './components/ProfileModal';
+import { ReportsSection } from './components/ReportsSection';
 import { SettingsModal } from './components/SettingsModal';
-import { WeeklyBreakdownTable } from './components/WeeklyBreakdownTable';
-import { WeeklyStatsCard } from './components/WeeklyStatsCard';
-import { WeekNavigator } from './components/WeekNavigator';
 import { useAuth } from './context/AuthContext';
 import {
   clearAllUserRecordsFromFirestore,
@@ -35,22 +44,21 @@ import {
 import { formatToDateKey, getMondayOfWeek } from './utils/timeUtils';
 
 export default function App() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading } = useAuth();
   const [records, setRecords] = useState<AttendanceRecord[]>(() => loadRecordsFromStorage());
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [selectedMonday, setSelectedMonday] = useState<Date>(() => getMondayOfWeek(new Date()));
+
+  // Active view tab for responsive mobile view: 'reports' | 'clocking' | 'account'
+  const [activeTab, setActiveTab] = useState<'reports' | 'clocking' | 'account'>('clocking');
 
   // Modals state
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
-  const [manualEntryDefaultDate, setManualEntryDefaultDate] = useState<string>(
-    formatToDateKey(new Date())
-  );
 
-  // Live timer tick every minute (or second when needed)
+  // Live timer tick every second
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentDate(new Date());
@@ -61,7 +69,7 @@ export default function App() {
   // Listen to Firestore records when user is logged in
   useEffect(() => {
     if (user) {
-      // If user had local records previously, sync them to user's firestore partition once
+      // Sync local cache to Firestore if any exists
       const local = loadRecordsFromStorage();
       if (local && local.length > 0) {
         syncLocalRecordsToFirestore(user.uid, local).catch((err) =>
@@ -82,7 +90,6 @@ export default function App() {
 
       return () => unsubscribe();
     } else {
-      // Unauthenticated fallback -> load from localStorage
       setRecords(loadRecordsFromStorage());
     }
   }, [user]);
@@ -103,7 +110,6 @@ export default function App() {
     const targetDaily = profile?.dailyTargetHours || 9;
     const baseSummary = calculateWeekSummary(selectedMonday, records, currentDate);
 
-    // If custom targets are defined in profile, adjust summary metrics accordingly
     if (targetWeekly !== 45 || targetDaily !== 9) {
       const overtimeBalance = baseSummary.workedHours - targetWeekly;
       const remainingHours = Math.max(0, targetWeekly - baseSummary.workedHours);
@@ -232,83 +238,24 @@ export default function App() {
     if (matchingIdx !== -1) {
       const existing = records[matchingIdx];
 
-      // Case 1: User submitted only Out Time, and existing record has In Time without Out Time
-      if (
-        entryData.outTime &&
-        !entryData.inTime &&
-        existing.inTime &&
-        !existing.outTime &&
-        new Date(entryData.outTime).getTime() > new Date(existing.inTime).getTime()
-      ) {
-        const updated: AttendanceRecord = {
-          ...existing,
-          outTime: entryData.outTime,
-          breakMinutes:
-            entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
-          note: entryData.note || existing.note,
-          updatedAt: Date.now(),
-        };
+      // Update existing record for the same day
+      const updated: AttendanceRecord = {
+        ...existing,
+        inTime: entryData.inTime !== undefined ? entryData.inTime : existing.inTime,
+        outTime: entryData.outTime !== undefined ? entryData.outTime : existing.outTime,
+        breakMinutes:
+          entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
+        note: entryData.note || existing.note,
+        updatedAt: Date.now(),
+      };
 
-        setRecords((prev) => prev.map((r, i) => (i === matchingIdx ? updated : r)));
-        if (user) {
-          saveRecordToFirestore(user.uid, updated).catch((err) =>
-            console.error('Firestore update error:', err)
-          );
-        }
-        return;
+      setRecords((prev) => prev.map((r, i) => (i === matchingIdx ? updated : r)));
+      if (user) {
+        saveRecordToFirestore(user.uid, updated).catch((err) =>
+          console.error('Firestore update error:', err)
+        );
       }
-
-      // Case 2: User submitted only In Time, and existing record has Out Time without In Time
-      if (
-        entryData.inTime &&
-        !entryData.outTime &&
-        !existing.inTime &&
-        existing.outTime &&
-        new Date(entryData.inTime).getTime() < new Date(existing.outTime).getTime()
-      ) {
-        const updated: AttendanceRecord = {
-          ...existing,
-          inTime: entryData.inTime,
-          breakMinutes:
-            entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
-          note: entryData.note || existing.note,
-          updatedAt: Date.now(),
-        };
-
-        setRecords((prev) => prev.map((r, i) => (i === matchingIdx ? updated : r)));
-        if (user) {
-          saveRecordToFirestore(user.uid, updated).catch((err) =>
-            console.error('Firestore update error:', err)
-          );
-        }
-        return;
-      }
-
-      // Case 3: Incomplete existing record and new entry provides both
-      if (
-        (!existing.inTime || !existing.outTime) &&
-        entryData.inTime &&
-        entryData.outTime &&
-        new Date(entryData.outTime).getTime() > new Date(entryData.inTime).getTime()
-      ) {
-        const updated: AttendanceRecord = {
-          ...existing,
-          inTime: entryData.inTime,
-          outTime: entryData.outTime,
-          breakMinutes:
-            entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
-          note: entryData.note || existing.note,
-          updatedAt: Date.now(),
-        };
-
-        setRecords((prev) => prev.map((r, i) => (i === matchingIdx ? updated : r)));
-        if (user) {
-          saveRecordToFirestore(user.uid, updated).catch((err) =>
-            console.error('Firestore update error:', err)
-          );
-        }
-        return;
-      }
+      return;
     }
 
     // Otherwise create a new independent record
@@ -328,7 +275,7 @@ export default function App() {
     }
   };
 
-  // Update existing record
+  // Update existing record from modal
   const handleUpdateRecord = (updated: AttendanceRecord) => {
     setRecords((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     if (user) {
@@ -350,7 +297,12 @@ export default function App() {
 
   // Quick log for a specific day from the table
   const handleQuickLogForDay = (dateKey: string) => {
-    setManualEntryDefaultDate(dateKey);
+    setActiveTab('clocking');
+    const inputDate = document.getElementById('input-clocking-date') as HTMLInputElement;
+    if (inputDate) {
+      inputDate.value = dateKey;
+      inputDate.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     const element = document.getElementById('attendance-entry-card');
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
@@ -380,9 +332,27 @@ export default function App() {
     }
   };
 
+  // 1. Initial Authentication Loading State
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center animate-pulse shadow-lg shadow-indigo-500/30 mb-4">
+          <Clock className="w-7 h-7" />
+        </div>
+        <p className="text-sm font-semibold text-slate-300">Loading Attendance Tracker...</p>
+      </div>
+    );
+  }
+
+  // 2. Authentication Gate: If user is not authenticated, show Auth Landing Gate
+  if (!user) {
+    return <AuthLandingGate />;
+  }
+
+  // 3. Authenticated User: 3-Part Layout Dashboard
   return (
     <div className="min-h-screen bg-slate-100/90 text-slate-900 font-sans antialiased flex flex-col selection:bg-indigo-500 selection:text-white">
-      {/* Header */}
+      {/* Top Application Header */}
       <Header
         currentDate={currentDate}
         selectedMonday={selectedMonday}
@@ -392,63 +362,162 @@ export default function App() {
         onCurrentWeek={handleCurrentWeek}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenExplainer={() => setIsExplainerOpen(true)}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={() => {}}
         onOpenProfile={() => setIsProfileOpen(true)}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-3.5 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-5.5">
-        {/* Week Navigator */}
-        <WeekNavigator
-          weekLabel={weekSummary.weekLabel}
-          isCurrentWeek={isCurrentWeek}
-          onPrevWeek={handlePrevWeek}
-          onNextWeek={handleNextWeek}
-          onCurrentWeek={handleCurrentWeek}
-        />
+      {/* Mobile Segmented 3-Part View Switcher */}
+      <div className="lg:hidden bg-white border-b border-slate-200 sticky top-[57px] z-30 px-3 py-2 shadow-2xs">
+        <div className="max-w-md mx-auto flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab('reports')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'reports'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Reports</span>
+          </button>
 
-        {/* Top Section: Weekly Summary Dashboard & Overtime Balance */}
-        <WeeklyStatsCard
-          summary={weekSummary}
-          onOpenExplainer={() => setIsExplainerOpen(true)}
-        />
+          <button
+            type="button"
+            onClick={() => setActiveTab('clocking')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'clocking'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Clocking</span>
+          </button>
 
-        {/* Today's Active Status & 1-Tap Clock In/Out */}
-        {isCurrentWeek && (
-          <ActiveSessionWidget
-            todaySummary={todaySummary}
-            activeRecord={activeRecord}
-            onClockInNow={handleClockInNow}
-            onClockOutNow={handleClockOutNow}
-            onOpenManualEntry={() => {
-              setManualEntryDefaultDate(todayKey);
-              document.getElementById('attendance-entry-card')?.scrollIntoView({ behavior: 'smooth' });
-            }}
-          />
-        )}
+          <button
+            type="button"
+            onClick={() => setActiveTab('account')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'account'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <UserIcon className="w-3.5 h-3.5" />
+            <span>Account</span>
+          </button>
+        </div>
+      </div>
 
-        {/* Middle Section: Attendance Entry Card */}
-        <AttendanceEntryCard
-          onSaveRecord={handleSaveRecord}
-          defaultDate={manualEntryDefaultDate}
-          existingRecords={records}
-        />
+      {/* Main 3-Part Layout Container */}
+      <main className="flex-1 w-full max-w-[1520px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
+        {/* Desktop: Panoramic 3-Column Grid */}
+        <div className="hidden lg:grid lg:grid-cols-12 gap-5 xl:gap-6 items-start">
+          {/* Part 1 (Left): Reports, Weekly Breakdowns, Performance & Requirements */}
+          <section className="col-span-4 xl:col-span-4" id="left-reports-column">
+            <ReportsSection
+              summary={weekSummary}
+              onEditRecord={(rec) => setEditingRecord(rec)}
+              onDeleteRecord={handleDeleteRecord}
+              onQuickLogForDay={handleQuickLogForDay}
+            />
+          </section>
 
-        {/* Bottom Section: Weekly Attendance Table / Daily Breakdown */}
-        <WeeklyBreakdownTable
-          summary={weekSummary}
-          onEditRecord={(record) => setEditingRecord(record)}
-          onDeleteRecord={handleDeleteRecord}
-          onQuickLogForDay={handleQuickLogForDay}
-        />
+          {/* Part 2 (Middle - Landing): Simple Clocking Entry Page (Date, Week, Clock In, Clock Out, Save Button) */}
+          <section className="col-span-4 xl:col-span-5" id="middle-clocking-column">
+            <ClockingLandingSection
+              currentDate={currentDate}
+              selectedMonday={selectedMonday}
+              isCurrentWeek={isCurrentWeek}
+              onPrevWeek={handlePrevWeek}
+              onNextWeek={handleNextWeek}
+              onCurrentWeek={handleCurrentWeek}
+              weekLabel={weekSummary.weekLabel}
+              onSaveRecord={handleSaveRecord}
+              existingRecords={records}
+              activeRecord={activeRecord}
+              onClockInNow={handleClockInNow}
+              onClockOutNow={handleClockOutNow}
+              todaySummary={todaySummary}
+            />
+          </section>
+
+          {/* Part 3 (Right): Account, Switch Account, Log Out, Firestore Cloud Sync */}
+          <section className="col-span-4 xl:col-span-3" id="right-account-column">
+            <AccountSection
+              records={records}
+              onImportRecords={(imported) => {
+                setRecords(imported);
+                if (user) {
+                  syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
+                    console.error('Firestore import sync:', err)
+                  );
+                }
+              }}
+              onResetToSample={handleResetToSample}
+              onClearAll={handleClearAll}
+              onOpenExplainer={() => setIsExplainerOpen(true)}
+            />
+          </section>
+        </div>
+
+        {/* Mobile / Tablet: Responsive Single Tab View with Middle Clocking as Default */}
+        <div className="lg:hidden max-w-xl mx-auto">
+          {activeTab === 'reports' && (
+            <ReportsSection
+              summary={weekSummary}
+              onEditRecord={(rec) => setEditingRecord(rec)}
+              onDeleteRecord={handleDeleteRecord}
+              onQuickLogForDay={handleQuickLogForDay}
+            />
+          )}
+
+          {activeTab === 'clocking' && (
+            <ClockingLandingSection
+              currentDate={currentDate}
+              selectedMonday={selectedMonday}
+              isCurrentWeek={isCurrentWeek}
+              onPrevWeek={handlePrevWeek}
+              onNextWeek={handleNextWeek}
+              onCurrentWeek={handleCurrentWeek}
+              weekLabel={weekSummary.weekLabel}
+              onSaveRecord={handleSaveRecord}
+              existingRecords={records}
+              activeRecord={activeRecord}
+              onClockInNow={handleClockInNow}
+              onClockOutNow={handleClockOutNow}
+              todaySummary={todaySummary}
+            />
+          )}
+
+          {activeTab === 'account' && (
+            <AccountSection
+              records={records}
+              onImportRecords={(imported) => {
+                setRecords(imported);
+                if (user) {
+                  syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
+                    console.error('Firestore import sync:', err)
+                  );
+                }
+              }}
+              onResetToSample={handleResetToSample}
+              onClearAll={handleClearAll}
+              onOpenExplainer={() => setIsExplainerOpen(true)}
+            />
+          )}
+        </div>
       </main>
 
       {/* Footer */}
-      <footer className="py-5 text-center text-xs text-slate-600 border-t border-slate-200/80 mt-auto bg-slate-100">
-        <p className="font-medium">45-Hour Weekly Attendance & Overtime Tracker • Personal Time & Attendance System</p>
+      <footer className="py-4 text-center text-xs text-slate-500 border-t border-slate-200/80 mt-auto bg-slate-100">
+        <p className="font-medium">
+          45-Hour Weekly Attendance & Overtime Tracker • 3-Part Modular Architecture
+        </p>
       </footer>
 
-      {/* Modals */}
+      {/* Edit Entry Modal */}
       <EditEntryModal
         record={editingRecord}
         isOpen={Boolean(editingRecord)}
@@ -457,11 +526,13 @@ export default function App() {
         onDelete={handleDeleteRecord}
       />
 
+      {/* Overtime Explainer Modal */}
       <OvertimeExplainerModal
         isOpen={isExplainerOpen}
         onClose={() => setIsExplainerOpen(false)}
       />
 
+      {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -476,15 +547,11 @@ export default function App() {
         }}
         onResetToSample={handleResetToSample}
         onClearAll={handleClearAll}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={() => {}}
         onOpenProfile={() => setIsProfileOpen(true)}
       />
 
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
-      />
-
+      {/* Profile Modal */}
       <ProfileModal
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}

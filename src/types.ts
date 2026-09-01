@@ -69,3 +69,5 @@ export interface WeekSummary {
   remainingWeekdaysCount: number; // weekdays without completed entries yet
   adjustedDailyTargetForRemaining: number; // remaining hours / remaining weekdays
 }
+
+export type DaySummary = DayAttendanceSummary;
