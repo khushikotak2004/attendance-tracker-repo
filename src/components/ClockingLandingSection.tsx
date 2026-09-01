@@ -7,12 +7,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Coffee,
+  Info,
   LogIn,
   LogOut,
   RotateCcw,
   Sparkles,
+  TrendingUp,
 } from 'lucide-react';
-import { AttendanceRecord, DaySummary } from '../types';
+import { AttendanceRecord, DaySummary, WeekSummary } from '../types';
 import {
   formatDifference,
   formatForDateTimeLocal,
@@ -35,6 +38,8 @@ interface ClockingLandingSectionProps {
   onClockInNow: () => void;
   onClockOutNow: () => void;
   todaySummary?: DaySummary;
+  weekSummary: WeekSummary;
+  onNavigateToReports: () => void;
 }
 
 export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
@@ -51,11 +56,14 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
   onClockInNow,
   onClockOutNow,
   todaySummary,
+  weekSummary,
+  onNavigateToReports,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string>(formatToDateKey(currentDate));
   const [inDateTime, setInDateTime] = useState<string>('');
   const [outDateTime, setOutDateTime] = useState<string>('');
   const [breakMinutes, setBreakMinutes] = useState<number>(0);
+  const [showBreakField, setShowBreakField] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -77,7 +85,9 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
       } else {
         setOutDateTime('');
       }
-      setBreakMinutes(matchingDateRecord.breakMinutes || 0);
+      const bMin = matchingDateRecord.breakMinutes || 0;
+      setBreakMinutes(bMin);
+      if (bMin > 0) setShowBreakField(true);
     } else {
       setInDateTime('');
       setOutDateTime('');
@@ -112,14 +122,12 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
   };
 
   // Chronological validation
-  const isDirectOrderInvalid = useMemo(() => {
+  const isTimeOrderInvalid = useMemo(() => {
     if (!inDateTime || !outDateTime) return false;
     const inMs = new Date(inDateTime).getTime();
     const outMs = new Date(outDateTime).getTime();
     return !isNaN(inMs) && !isNaN(outMs) && outMs <= inMs;
   }, [inDateTime, outDateTime]);
-
-  const isTimeOrderInvalid = isDirectOrderInvalid;
 
   // Calculate live shift preview
   const liveShiftHours = useMemo(() => {
@@ -158,7 +166,7 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
     setSaveSuccess('Attendance record saved successfully!');
     setTimeout(() => {
       setSaveSuccess(null);
-    }, 3000);
+    }, 3500);
   };
 
   // Active Session elapsed calculation
@@ -175,13 +183,13 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
   const isSaveDisabled = (!inDateTime && !outDateTime) || isTimeOrderInvalid;
 
   return (
-    <div className="space-y-4" id="clocking-landing-page">
-      {/* 1. Current Week Display Banner */}
-      <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-xs border border-slate-800 flex items-center justify-between gap-3">
+    <div className="max-w-2xl mx-auto space-y-5" id="clocking-page-view">
+      {/* 1. Week Navigation & Active Status Banner */}
+      <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-800 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
             onClick={onPrevWeek}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white transition-all cursor-pointer shadow-xs"
             title="Previous Week"
             aria-label="Previous Week"
           >
@@ -202,13 +210,13 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
           {!isCurrentWeek ? (
             <button
               onClick={onCurrentWeek}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all cursor-pointer shadow-xs"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Jump to Current Week</span>
+              <span>Current Week</span>
             </button>
           ) : (
-            <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold tracking-wide flex items-center gap-1.5">
+            <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold tracking-wide flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span>Active Week</span>
             </span>
@@ -216,7 +224,7 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
 
           <button
             onClick={onNextWeek}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white transition-all cursor-pointer shadow-xs"
             title="Next Week"
             aria-label="Next Week"
           >
@@ -225,12 +233,12 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
         </div>
       </div>
 
-      {/* 2. Active Session Live Clock Banner (if currently clocked in today) */}
-      {activeRecord && (
-        <div className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 border border-emerald-200/90 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
-              <Clock className="w-5 h-5 animate-spin-slow" />
+      {/* 2. Active Session Live Clock Banner (if currently clocked in) */}
+      {activeRecord ? (
+        <div className="bg-gradient-to-r from-emerald-600/10 via-teal-600/10 to-emerald-600/10 border border-emerald-300 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
+              <Clock className="w-6 h-6 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -251,35 +259,58 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
           <button
             type="button"
             onClick={onClockOutNow}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold transition-all shadow-sm cursor-pointer shrink-0"
             id="btn-active-clock-out"
           >
             <LogOut className="w-4 h-4" />
             <span>Clock Out Now</span>
           </button>
         </div>
+      ) : (
+        /* Quick One-Click Clock In Button for Right Now */
+        <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <LogIn className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">Ready to start today&apos;s shift?</h4>
+              <p className="text-xs text-slate-500">Tap below to stamp your Clock-In time immediately.</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClockInNow}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+            id="btn-quick-clock-in-now"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Clock In Now</span>
+          </button>
+        </div>
       )}
 
-      {/* 3. Primary Clocking Entry Card (Simple UI: Date, Clock In, Clock Out, Save Button) */}
+      {/* 3. Primary Clocking Entry Card */}
       <div
-        className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 relative overflow-hidden"
+        className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 relative space-y-6"
         id="attendance-entry-card"
       >
-        {/* Subtle accent border */}
-        <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+        {/* Card Header & Preset */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
           <div>
-            <h3 className="text-xl font-bold text-slate-900 leading-tight">
+            <h3 className="text-xl font-bold text-slate-900 tracking-tight">
               Clocking Entry
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Log daily clock-in and clock-out timestamps
+              Enter shift timestamps for automatic daily & weekly overtime calculation
             </p>
           </div>
 
           <button
             type="button"
             onClick={handleSetStandard9h}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer border border-indigo-200/60"
+            className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer border border-indigo-200/80"
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
             <span>Fill 9h Standard Shift (9am - 6pm)</span>
@@ -288,8 +319,8 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-5" id="attendance-clock-form">
           {/* Field 1: Date Field */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
                 Date Field
               </label>
@@ -380,9 +411,67 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
             </div>
           </div>
 
+          {/* Optional Break Deduction Toggle */}
+          <div className="pt-1">
+            {!showBreakField ? (
+              <button
+                type="button"
+                onClick={() => setShowBreakField(true)}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Coffee className="w-3.5 h-3.5" />
+                <span>+ Add Unpaid Break Deduction (minutes)</span>
+              </button>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Coffee className="w-4 h-4 text-indigo-600" />
+                    <span>Break Deduction (Minutes)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBreakMinutes(0);
+                      setShowBreakField(false);
+                    }}
+                    className="text-[11px] font-bold text-slate-500 hover:text-rose-600"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  {[0, 30, 45, 60].map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setBreakMinutes(mins)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                        breakMinutes === mins
+                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {mins === 0 ? 'None' : `${mins}m`}
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={0}
+                    max={300}
+                    value={breakMinutes}
+                    onChange={(e) => setBreakMinutes(Math.max(0, Number(e.target.value)))}
+                    placeholder="Custom"
+                    className="w-24 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-slate-900 bg-white"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Validation Notice if Clock Out <= Clock In */}
           {isTimeOrderInvalid && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>
                 Invalid Time Order: Clock Out time cannot be earlier than or equal to Clock In time.
@@ -392,34 +481,42 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
 
           {/* Live Calculated Duration Preview (if valid) */}
           {inDateTime && outDateTime && !isTimeOrderInvalid && (
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">Calculated Shift Duration:</span>
-              <span className="text-sm font-extrabold text-slate-900 font-mono">
-                {formatHoursAndMinutes(liveShiftHours)} (
-                {liveShiftHours >= 9 ? (
-                  <span className="text-emerald-600">
-                    +{formatDifference(liveShiftHours - 9)} overtime
-                  </span>
-                ) : (
-                  <span className="text-amber-600">
-                    -{formatDifference(9 - liveShiftHours)} deficit
-                  </span>
-                )}
-                )
-              </span>
+            <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-indigo-950 block">Calculated Shift Duration:</span>
+                <span className="text-[11px] text-indigo-700">
+                  {breakMinutes > 0 ? `Net duration after -${breakMinutes}m break` : 'Standard continuous shift'}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-base font-extrabold text-slate-900 font-mono block">
+                  {formatHoursAndMinutes(liveShiftHours)}
+                </span>
+                <span className="text-xs font-bold">
+                  {liveShiftHours >= 9 ? (
+                    <span className="text-emerald-600">
+                      +{formatDifference(liveShiftHours - 9)} overtime
+                    </span>
+                  ) : (
+                    <span className="text-amber-600">
+                      -{formatDifference(9 - liveShiftHours)} deficit
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>
           )}
 
-          {/* Success / Error alerts */}
+          {/* Error & Success Messages */}
           {errorMessage && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {saveSuccess && (
-            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>{saveSuccess}</span>
             </div>
@@ -429,19 +526,53 @@ export const ClockingLandingSection: React.FC<ClockingLandingSectionProps> = ({
           <button
             type="submit"
             disabled={isSaveDisabled}
-            className="w-full py-3.5 px-5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-sm shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] flex items-center justify-center gap-2"
+            className="w-full py-4 px-5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[50px] flex items-center justify-center gap-2"
             id="btn-save-clocking-entry"
           >
             {isTimeOrderInvalid ? (
               <span>Fix Time Order to Save</span>
             ) : (
               <>
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-5 h-5" />
                 <span>Save Attendance Entry</span>
               </>
             )}
           </button>
         </form>
+      </div>
+
+      {/* 4. Weekly Summary Glance Card & Link to Reports Page */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5 w-full sm:w-auto">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-900">
+                Weekly Target: {weekSummary.workedFormatted} / {weekSummary.targetHours}.0h
+              </span>
+              <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                {weekSummary.progressPercentage}%
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {weekSummary.isTargetMet
+                ? 'Target achieved for this week!'
+                : `${weekSummary.remainingFormatted} remaining with automatic overtime offset`}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onNavigateToReports}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+          id="btn-jump-to-reports"
+        >
+          <span>View Full Reports</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );

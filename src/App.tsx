@@ -20,7 +20,7 @@ import { AccountSection } from './components/AccountSection';
 import { AuthLandingGate } from './components/AuthLandingGate';
 import { ClockingLandingSection } from './components/ClockingLandingSection';
 import { EditEntryModal } from './components/EditEntryModal';
-import { Header } from './components/Header';
+import { AppPage, Header } from './components/Header';
 import { OvertimeExplainerModal } from './components/OvertimeExplainerModal';
 import { ProfileModal } from './components/ProfileModal';
 import { ReportsSection } from './components/ReportsSection';
@@ -49,8 +49,8 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [selectedMonday, setSelectedMonday] = useState<Date>(() => getMondayOfWeek(new Date()));
 
-  // Active view tab for responsive mobile view: 'reports' | 'clocking' | 'account'
-  const [activeTab, setActiveTab] = useState<'reports' | 'clocking' | 'account'>('clocking');
+  // Active Page State: 'clocking' (Landing page) | 'reports' | 'account'
+  const [activePage, setActivePage] = useState<AppPage>('clocking');
 
   // Modals state
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
@@ -295,18 +295,20 @@ export default function App() {
     }
   };
 
-  // Quick log for a specific day from the table
+  // Quick log for a specific day from the reports page
   const handleQuickLogForDay = (dateKey: string) => {
-    setActiveTab('clocking');
-    const inputDate = document.getElementById('input-clocking-date') as HTMLInputElement;
-    if (inputDate) {
-      inputDate.value = dateKey;
-      inputDate.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    const element = document.getElementById('attendance-entry-card');
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
+    setActivePage('clocking');
+    setTimeout(() => {
+      const inputDate = document.getElementById('input-clocking-date') as HTMLInputElement;
+      if (inputDate) {
+        inputDate.value = dateKey;
+        inputDate.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      const element = document.getElementById('attendance-entry-card');
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 50);
   };
 
   // Reset to sample records
@@ -349,213 +351,164 @@ export default function App() {
     return <AuthLandingGate />;
   }
 
-  // 3. Authenticated User: 3-Part Layout Dashboard
+  // 3. Authenticated User: Dedicated Multi-Page View System
   return (
     <div className="min-h-screen bg-slate-100/90 text-slate-900 font-sans antialiased flex flex-col selection:bg-indigo-500 selection:text-white">
-      {/* Top Application Header */}
+      {/* Top Application Header & Navigation Bar */}
       <Header
+        activePage={activePage}
+        onNavigate={(page) => setActivePage(page)}
         currentDate={currentDate}
-        selectedMonday={selectedMonday}
-        isCurrentWeek={isCurrentWeek}
-        onPrevWeek={handlePrevWeek}
-        onNextWeek={handleNextWeek}
-        onCurrentWeek={handleCurrentWeek}
-        onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenExplainer={() => setIsExplainerOpen(true)}
-        onOpenAuth={() => {}}
-        onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* Mobile Segmented 3-Part View Switcher */}
-      <div className="lg:hidden bg-white border-b border-slate-200 sticky top-[57px] z-30 px-3 py-2 shadow-2xs">
-        <div className="max-w-md mx-auto flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setActiveTab('reports')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'reports'
-                ? 'bg-white text-indigo-600 shadow-xs'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Reports</span>
-          </button>
+      {/* Main Single-Page Content Area */}
+      <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* PAGE 1: Clocking Landing Page */}
+        {activePage === 'clocking' && (
+          <ClockingLandingSection
+            currentDate={currentDate}
+            selectedMonday={selectedMonday}
+            isCurrentWeek={isCurrentWeek}
+            onPrevWeek={handlePrevWeek}
+            onNextWeek={handleNextWeek}
+            onCurrentWeek={handleCurrentWeek}
+            weekLabel={weekSummary.weekLabel}
+            onSaveRecord={handleSaveRecord}
+            existingRecords={records}
+            activeRecord={activeRecord}
+            onClockInNow={handleClockInNow}
+            onClockOutNow={handleClockOutNow}
+            todaySummary={todaySummary}
+            weekSummary={weekSummary}
+            onNavigateToReports={() => setActivePage('reports')}
+          />
+        )}
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('clocking')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'clocking'
-                ? 'bg-white text-indigo-600 shadow-xs'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Clocking</span>
-          </button>
+        {/* PAGE 2: Reports & Breakdown Page */}
+        {activePage === 'reports' && (
+          <ReportsSection
+            summary={weekSummary}
+            selectedMonday={selectedMonday}
+            isCurrentWeek={isCurrentWeek}
+            onPrevWeek={handlePrevWeek}
+            onNextWeek={handleNextWeek}
+            onCurrentWeek={handleCurrentWeek}
+            onEditRecord={(rec) => setEditingRecord(rec)}
+            onDeleteRecord={handleDeleteRecord}
+            onQuickLogForDay={handleQuickLogForDay}
+            onNavigateToClocking={() => setActivePage('clocking')}
+            allRecords={records}
+          />
+        )}
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('account')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'account'
-                ? 'bg-white text-indigo-600 shadow-xs'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <UserIcon className="w-3.5 h-3.5" />
-            <span>Account</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main 3-Part Layout Container */}
-      <main className="flex-1 w-full max-w-[1520px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
-        {/* Desktop: Panoramic 3-Column Grid */}
-        <div className="hidden lg:grid lg:grid-cols-12 gap-5 xl:gap-6 items-start">
-          {/* Part 1 (Left): Reports, Weekly Breakdowns, Performance & Requirements */}
-          <section className="col-span-4 xl:col-span-4" id="left-reports-column">
-            <ReportsSection
-              summary={weekSummary}
-              onEditRecord={(rec) => setEditingRecord(rec)}
-              onDeleteRecord={handleDeleteRecord}
-              onQuickLogForDay={handleQuickLogForDay}
-            />
-          </section>
-
-          {/* Part 2 (Middle - Landing): Simple Clocking Entry Page (Date, Week, Clock In, Clock Out, Save Button) */}
-          <section className="col-span-4 xl:col-span-5" id="middle-clocking-column">
-            <ClockingLandingSection
-              currentDate={currentDate}
-              selectedMonday={selectedMonday}
-              isCurrentWeek={isCurrentWeek}
-              onPrevWeek={handlePrevWeek}
-              onNextWeek={handleNextWeek}
-              onCurrentWeek={handleCurrentWeek}
-              weekLabel={weekSummary.weekLabel}
-              onSaveRecord={handleSaveRecord}
-              existingRecords={records}
-              activeRecord={activeRecord}
-              onClockInNow={handleClockInNow}
-              onClockOutNow={handleClockOutNow}
-              todaySummary={todaySummary}
-            />
-          </section>
-
-          {/* Part 3 (Right): Account, Switch Account, Log Out, Firestore Cloud Sync */}
-          <section className="col-span-4 xl:col-span-3" id="right-account-column">
-            <AccountSection
-              records={records}
-              onImportRecords={(imported) => {
-                setRecords(imported);
-                if (user) {
-                  syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
-                    console.error('Firestore import sync:', err)
-                  );
-                }
-              }}
-              onResetToSample={handleResetToSample}
-              onClearAll={handleClearAll}
-              onOpenExplainer={() => setIsExplainerOpen(true)}
-            />
-          </section>
-        </div>
-
-        {/* Mobile / Tablet: Responsive Single Tab View with Middle Clocking as Default */}
-        <div className="lg:hidden max-w-xl mx-auto">
-          {activeTab === 'reports' && (
-            <ReportsSection
-              summary={weekSummary}
-              onEditRecord={(rec) => setEditingRecord(rec)}
-              onDeleteRecord={handleDeleteRecord}
-              onQuickLogForDay={handleQuickLogForDay}
-            />
-          )}
-
-          {activeTab === 'clocking' && (
-            <ClockingLandingSection
-              currentDate={currentDate}
-              selectedMonday={selectedMonday}
-              isCurrentWeek={isCurrentWeek}
-              onPrevWeek={handlePrevWeek}
-              onNextWeek={handleNextWeek}
-              onCurrentWeek={handleCurrentWeek}
-              weekLabel={weekSummary.weekLabel}
-              onSaveRecord={handleSaveRecord}
-              existingRecords={records}
-              activeRecord={activeRecord}
-              onClockInNow={handleClockInNow}
-              onClockOutNow={handleClockOutNow}
-              todaySummary={todaySummary}
-            />
-          )}
-
-          {activeTab === 'account' && (
-            <AccountSection
-              records={records}
-              onImportRecords={(imported) => {
-                setRecords(imported);
-                if (user) {
-                  syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
-                    console.error('Firestore import sync:', err)
-                  );
-                }
-              }}
-              onResetToSample={handleResetToSample}
-              onClearAll={handleClearAll}
-              onOpenExplainer={() => setIsExplainerOpen(true)}
-            />
-          )}
-        </div>
+        {/* PAGE 3: Account & Management Page */}
+        {activePage === 'account' && (
+          <AccountSection
+            records={records}
+            onImportRecords={(imported) => {
+              setRecords(imported);
+              if (user) {
+                syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
+                  console.error('Import sync error:', err)
+                );
+              }
+            }}
+            onResetToSample={handleResetToSample}
+            onClearAll={handleClearAll}
+            onOpenExplainer={() => setIsExplainerOpen(true)}
+          />
+        )}
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center text-xs text-slate-500 border-t border-slate-200/80 mt-auto bg-slate-100">
-        <p className="font-medium">
-          45-Hour Weekly Attendance & Overtime Tracker • 3-Part Modular Architecture
-        </p>
+      <footer className="py-6 border-t border-slate-200/80 text-center text-xs text-slate-500">
+        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span className="font-medium text-slate-700">Attendance Tracker</span>
+            <span>•</span>
+            <span>45h Weekly Target</span>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs font-semibold">
+            <button
+              onClick={() => setActivePage('reports')}
+              className={`transition-colors cursor-pointer ${
+                activePage === 'reports' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Reports & Overtime
+            </button>
+            <button
+              onClick={() => setActivePage('clocking')}
+              className={`transition-colors cursor-pointer ${
+                activePage === 'clocking' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Clocking Entry
+            </button>
+            <button
+              onClick={() => setActivePage('account')}
+              className={`transition-colors cursor-pointer ${
+                activePage === 'account' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Account & Sync
+            </button>
+          </div>
+        </div>
       </footer>
 
       {/* Edit Entry Modal */}
-      <EditEntryModal
-        record={editingRecord}
-        isOpen={Boolean(editingRecord)}
-        onClose={() => setEditingRecord(null)}
-        onUpdate={handleUpdateRecord}
-        onDelete={handleDeleteRecord}
-      />
+      {editingRecord && (
+        <EditEntryModal
+          record={editingRecord}
+          onClose={() => setEditingRecord(null)}
+          onSave={handleUpdateRecord}
+        />
+      )}
 
-      {/* Overtime Explainer Modal */}
-      <OvertimeExplainerModal
-        isOpen={isExplainerOpen}
-        onClose={() => setIsExplainerOpen(false)}
-      />
+      {/* 45h Overtime Rules Explainer Modal */}
+      {isExplainerOpen && (
+        <OvertimeExplainerModal onClose={() => setIsExplainerOpen(false)} />
+      )}
 
       {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        records={records}
-        onImportRecords={(imported) => {
-          setRecords(imported);
-          if (user) {
-            syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
-              console.error('Firestore import sync:', err)
-            );
-          }
-        }}
-        onResetToSample={handleResetToSample}
-        onClearAll={handleClearAll}
-        onOpenAuth={() => {}}
-        onOpenProfile={() => setIsProfileOpen(true)}
-      />
+      {isSettingsOpen && (
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          records={records}
+          onImportRecords={(imported) => {
+            setRecords(imported);
+            if (user) {
+              syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
+                console.error('Settings import error:', err)
+              );
+            }
+          }}
+          onResetToSample={handleResetToSample}
+          onClearAll={handleClearAll}
+          onOpenExplainer={() => {
+            setIsSettingsOpen(false);
+            setIsExplainerOpen(true);
+          }}
+        />
+      )}
 
       {/* Profile Modal */}
-      <ProfileModal
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-      />
+      {isProfileOpen && (
+        <ProfileModal
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          onOpenSettings={() => {
+            setIsProfileOpen(false);
+            setIsSettingsOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 }
