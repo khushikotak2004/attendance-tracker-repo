@@ -7,13 +7,23 @@ import React, { useEffect, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { ActiveSessionWidget } from './components/ActiveSessionWidget';
 import { AttendanceEntryCard } from './components/AttendanceEntryCard';
+import { AuthModal } from './components/AuthModal';
 import { EditEntryModal } from './components/EditEntryModal';
 import { Header } from './components/Header';
 import { OvertimeExplainerModal } from './components/OvertimeExplainerModal';
+import { ProfileModal } from './components/ProfileModal';
 import { SettingsModal } from './components/SettingsModal';
 import { WeeklyBreakdownTable } from './components/WeeklyBreakdownTable';
 import { WeeklyStatsCard } from './components/WeeklyStatsCard';
 import { WeekNavigator } from './components/WeekNavigator';
+import { useAuth } from './context/AuthContext';
+import {
+  clearAllUserRecordsFromFirestore,
+  deleteRecordFromFirestore,
+  saveRecordToFirestore,
+  subscribeToUserAttendanceRecords,
+  syncLocalRecordsToFirestore,
+} from './services/attendanceFirestoreService';
 import { AttendanceRecord } from './types';
 import { calculateWeekSummary } from './utils/calculations';
 import {
@@ -25,6 +35,7 @@ import {
 import { formatToDateKey, getMondayOfWeek } from './utils/timeUtils';
 
 export default function App() {
+  const { user, profile } = useAuth();
   const [records, setRecords] = useState<AttendanceRecord[]>(() => loadRecordsFromStorage());
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [selectedMonday, setSelectedMonday] = useState<Date>(() => getMondayOfWeek(new Date()));
@@ -33,6 +44,8 @@ export default function App() {
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [manualEntryDefaultDate, setManualEntryDefaultDate] = useState<string>(
     formatToDateKey(new Date())
   );
@@ -45,7 +58,36 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Save to localStorage on any record change
+  // Listen to Firestore records when user is logged in
+  useEffect(() => {
+    if (user) {
+      // If user had local records previously, sync them to user's firestore partition once
+      const local = loadRecordsFromStorage();
+      if (local && local.length > 0) {
+        syncLocalRecordsToFirestore(user.uid, local).catch((err) =>
+          console.warn('Initial sync error:', err)
+        );
+      }
+
+      const unsubscribe = subscribeToUserAttendanceRecords(
+        user.uid,
+        (firestoreRecords) => {
+          setRecords(firestoreRecords);
+          saveRecordsToStorage(firestoreRecords);
+        },
+        (err) => {
+          console.warn('Using local fallback due to sync error:', err);
+        }
+      );
+
+      return () => unsubscribe();
+    } else {
+      // Unauthenticated fallback -> load from localStorage
+      setRecords(loadRecordsFromStorage());
+    }
+  }, [user]);
+
+  // Persist to local storage as cache/offline
   useEffect(() => {
     saveRecordsToStorage(records);
   }, [records]);
@@ -55,10 +97,34 @@ export default function App() {
   const isCurrentWeek =
     formatToDateKey(selectedMonday) === formatToDateKey(currentWeekMonday);
 
-  // Calculate week summary for selected week
+  // Calculate week summary for selected week (respecting custom user profile goals if set)
   const weekSummary = useMemo(() => {
-    return calculateWeekSummary(selectedMonday, records, currentDate);
-  }, [selectedMonday, records, currentDate]);
+    const targetWeekly = profile?.weeklyTargetHours || 45;
+    const targetDaily = profile?.dailyTargetHours || 9;
+    const baseSummary = calculateWeekSummary(selectedMonday, records, currentDate);
+
+    // If custom targets are defined in profile, adjust summary metrics accordingly
+    if (targetWeekly !== 45 || targetDaily !== 9) {
+      const overtimeBalance = baseSummary.workedHours - targetWeekly;
+      const remainingHours = Math.max(0, targetWeekly - baseSummary.workedHours);
+      const progressPercentage = Math.min(
+        100,
+        Math.round((baseSummary.workedHours / targetWeekly) * 100)
+      );
+
+      return {
+        ...baseSummary,
+        targetHours: targetWeekly,
+        standardDailyHours: targetDaily,
+        remainingHours,
+        overtimeBalance,
+        progressPercentage,
+        isTargetMet: baseSummary.workedHours >= targetWeekly,
+      };
+    }
+
+    return baseSummary;
+  }, [selectedMonday, records, currentDate, profile]);
 
   // Find active record if currently clocked in
   const todayKey = formatToDateKey(currentDate);
@@ -71,7 +137,7 @@ export default function App() {
     return weekSummary.days.find((d) => d.date === todayKey);
   }, [weekSummary, todayKey]);
 
-  // Trigger celebration confetti when 45h target is reached
+  // Trigger celebration confetti when weekly target is reached
   const [hasCelebrated, setHasCelebrated] = useState<boolean>(false);
   useEffect(() => {
     if (weekSummary.isTargetMet && !hasCelebrated) {
@@ -118,6 +184,7 @@ export default function App() {
 
     const newRecord: AttendanceRecord = {
       id: `rec-${Date.now()}`,
+      userId: user?.uid,
       date: dateKey,
       inTime: now.toISOString(),
       outTime: null,
@@ -126,6 +193,12 @@ export default function App() {
     };
 
     setRecords((prev) => [newRecord, ...prev]);
+
+    if (user) {
+      saveRecordToFirestore(user.uid, newRecord).catch((err) =>
+        console.error('Firestore save error:', err)
+      );
+    }
   };
 
   // Clock Out Now Action
@@ -133,108 +206,146 @@ export default function App() {
     if (!activeRecord) return;
     const now = new Date();
 
+    const updatedRecord = {
+      ...activeRecord,
+      outTime: now.toISOString(),
+      updatedAt: Date.now(),
+    };
+
     setRecords((prev) =>
-      prev.map((r) =>
-        r.id === activeRecord.id
-          ? {
-              ...r,
-              outTime: now.toISOString(),
-              updatedAt: Date.now(),
-            }
-          : r
-      )
+      prev.map((r) => (r.id === activeRecord.id ? updatedRecord : r))
     );
+
+    if (user) {
+      saveRecordToFirestore(user.uid, updatedRecord).catch((err) =>
+        console.error('Firestore update error:', err)
+      );
+    }
   };
 
   // Save manual / entry card record with smart day merging
   const handleSaveRecord = (
     entryData: Omit<AttendanceRecord, 'id' | 'createdAt' | 'updatedAt'>
   ) => {
-    setRecords((prev) => {
-      // Find if there is an existing record on this date that is incomplete
-      const matchingIdx = prev.findIndex((r) => r.date === entryData.date);
+    const matchingIdx = records.findIndex((r) => r.date === entryData.date);
 
-      if (matchingIdx !== -1) {
-        const existing = prev[matchingIdx];
+    if (matchingIdx !== -1) {
+      const existing = records[matchingIdx];
 
-        // Case 1: User submitted only Out Time, and existing record has In Time without Out Time -> complete the shift if chronologically valid!
-        if (
-          entryData.outTime &&
-          !entryData.inTime &&
-          existing.inTime &&
-          !existing.outTime &&
-          new Date(entryData.outTime).getTime() > new Date(existing.inTime).getTime()
-        ) {
-          const updated = [...prev];
-          updated[matchingIdx] = {
-            ...existing,
-            outTime: entryData.outTime,
-            breakMinutes: entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
-            note: entryData.note || existing.note,
-            updatedAt: Date.now(),
-          };
-          return updated;
+      // Case 1: User submitted only Out Time, and existing record has In Time without Out Time
+      if (
+        entryData.outTime &&
+        !entryData.inTime &&
+        existing.inTime &&
+        !existing.outTime &&
+        new Date(entryData.outTime).getTime() > new Date(existing.inTime).getTime()
+      ) {
+        const updated: AttendanceRecord = {
+          ...existing,
+          outTime: entryData.outTime,
+          breakMinutes:
+            entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
+          note: entryData.note || existing.note,
+          updatedAt: Date.now(),
+        };
+
+        setRecords((prev) => prev.map((r, i) => (i === matchingIdx ? updated : r)));
+        if (user) {
+          saveRecordToFirestore(user.uid, updated).catch((err) =>
+            console.error('Firestore update error:', err)
+          );
         }
-
-        // Case 2: User submitted only In Time, and existing record has Out Time without In Time -> complete the shift if chronologically valid!
-        if (
-          entryData.inTime &&
-          !entryData.outTime &&
-          !existing.inTime &&
-          existing.outTime &&
-          new Date(entryData.inTime).getTime() < new Date(existing.outTime).getTime()
-        ) {
-          const updated = [...prev];
-          updated[matchingIdx] = {
-            ...existing,
-            inTime: entryData.inTime,
-            breakMinutes: entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
-            note: entryData.note || existing.note,
-            updatedAt: Date.now(),
-          };
-          return updated;
-        }
-
-        // Case 3: Incomplete existing record and new entry provides both -> update existing if valid
-        if (
-          (!existing.inTime || !existing.outTime) &&
-          entryData.inTime &&
-          entryData.outTime &&
-          new Date(entryData.outTime).getTime() > new Date(entryData.inTime).getTime()
-        ) {
-          const updated = [...prev];
-          updated[matchingIdx] = {
-            ...existing,
-            inTime: entryData.inTime,
-            outTime: entryData.outTime,
-            breakMinutes: entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
-            note: entryData.note || existing.note,
-            updatedAt: Date.now(),
-          };
-          return updated;
-        }
+        return;
       }
 
-      // Otherwise create a new independent record
-      const newRecord: AttendanceRecord = {
-        ...entryData,
-        id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
+      // Case 2: User submitted only In Time, and existing record has Out Time without In Time
+      if (
+        entryData.inTime &&
+        !entryData.outTime &&
+        !existing.inTime &&
+        existing.outTime &&
+        new Date(entryData.inTime).getTime() < new Date(existing.outTime).getTime()
+      ) {
+        const updated: AttendanceRecord = {
+          ...existing,
+          inTime: entryData.inTime,
+          breakMinutes:
+            entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
+          note: entryData.note || existing.note,
+          updatedAt: Date.now(),
+        };
 
-      return [newRecord, ...prev];
-    });
+        setRecords((prev) => prev.map((r, i) => (i === matchingIdx ? updated : r)));
+        if (user) {
+          saveRecordToFirestore(user.uid, updated).catch((err) =>
+            console.error('Firestore update error:', err)
+          );
+        }
+        return;
+      }
+
+      // Case 3: Incomplete existing record and new entry provides both
+      if (
+        (!existing.inTime || !existing.outTime) &&
+        entryData.inTime &&
+        entryData.outTime &&
+        new Date(entryData.outTime).getTime() > new Date(entryData.inTime).getTime()
+      ) {
+        const updated: AttendanceRecord = {
+          ...existing,
+          inTime: entryData.inTime,
+          outTime: entryData.outTime,
+          breakMinutes:
+            entryData.breakMinutes !== undefined ? entryData.breakMinutes : existing.breakMinutes,
+          note: entryData.note || existing.note,
+          updatedAt: Date.now(),
+        };
+
+        setRecords((prev) => prev.map((r, i) => (i === matchingIdx ? updated : r)));
+        if (user) {
+          saveRecordToFirestore(user.uid, updated).catch((err) =>
+            console.error('Firestore update error:', err)
+          );
+        }
+        return;
+      }
+    }
+
+    // Otherwise create a new independent record
+    const newRecord: AttendanceRecord = {
+      ...entryData,
+      userId: user?.uid,
+      id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    setRecords((prev) => [newRecord, ...prev]);
+    if (user) {
+      saveRecordToFirestore(user.uid, newRecord).catch((err) =>
+        console.error('Firestore save error:', err)
+      );
+    }
   };
 
   // Update existing record
   const handleUpdateRecord = (updated: AttendanceRecord) => {
     setRecords((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    if (user) {
+      saveRecordToFirestore(user.uid, updated).catch((err) =>
+        console.error('Firestore update error:', err)
+      );
+    }
   };
 
   // Delete record
   const handleDeleteRecord = (recordId: string) => {
     setRecords((prev) => prev.filter((r) => r.id !== recordId));
+    if (user) {
+      deleteRecordFromFirestore(recordId).catch((err) =>
+        console.error('Firestore delete error:', err)
+      );
+    }
   };
 
   // Quick log for a specific day from the table
@@ -251,12 +362,22 @@ export default function App() {
     const sample = generateSampleRecords();
     setRecords(sample);
     setSelectedMonday(getMondayOfWeek(new Date()));
+    if (user) {
+      syncLocalRecordsToFirestore(user.uid, sample).catch((err) =>
+        console.error('Firestore sample sync error:', err)
+      );
+    }
   };
 
   // Clear all records
   const handleClearAll = () => {
     clearAllRecordsFromStorage();
     setRecords([]);
+    if (user) {
+      clearAllUserRecordsFromFirestore(user.uid).catch((err) =>
+        console.error('Firestore clear error:', err)
+      );
+    }
   };
 
   return (
@@ -271,6 +392,8 @@ export default function App() {
         onCurrentWeek={handleCurrentWeek}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenExplainer={() => setIsExplainerOpen(true)}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
       />
 
       {/* Main Container */}
@@ -343,9 +466,28 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         records={records}
-        onImportRecords={(imported) => setRecords(imported)}
+        onImportRecords={(imported) => {
+          setRecords(imported);
+          if (user) {
+            syncLocalRecordsToFirestore(user.uid, imported).catch((err) =>
+              console.error('Firestore import sync:', err)
+            );
+          }
+        }}
         onResetToSample={handleResetToSample}
         onClearAll={handleClearAll}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
+      />
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+      />
+
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
       />
     </div>
   );

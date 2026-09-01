@@ -1,5 +1,16 @@
 import React from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Clock, HelpCircle, RotateCcw, Sliders } from 'lucide-react';
+import {
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  HelpCircle,
+  LogIn,
+  RotateCcw,
+  Sliders,
+  User as UserIcon,
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   currentDate: Date;
@@ -10,6 +21,8 @@ interface HeaderProps {
   onCurrentWeek: () => void;
   onOpenSettings: () => void;
   onOpenExplainer: () => void;
+  onOpenAuth: () => void;
+  onOpenProfile: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,7 +33,11 @@ export const Header: React.FC<HeaderProps> = ({
   onCurrentWeek,
   onOpenSettings,
   onOpenExplainer,
+  onOpenAuth,
+  onOpenProfile,
 }) => {
+  const { user, profile, loading } = useAuth();
+
   const formattedToday = currentDate.toLocaleDateString(undefined, {
     weekday: 'short',
     month: 'short',
@@ -33,10 +50,20 @@ export const Header: React.FC<HeaderProps> = ({
     hour12: true,
   });
 
+  const avatarInitials = (profile?.displayName || user?.displayName || user?.email || 'U')
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
+
   return (
-    <header className="bg-slate-900 text-white shadow-xs border-b border-slate-800/80 sticky top-0 z-40" id="app-header">
+    <header
+      className="bg-slate-900 text-white shadow-xs border-b border-slate-800/80 sticky top-0 z-40"
+      id="app-header"
+    >
       <div className="max-w-4xl mx-auto px-4 py-3 sm:py-3.5">
-        {/* Top Bar: Title & Live Time */}
+        {/* Top Bar: Title & Controls */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-600 flex items-center justify-center text-white shadow-sm ring-1 ring-white/10 font-bold text-lg shrink-0">
@@ -59,7 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Live Clock Pill */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-xs font-medium text-slate-300 shadow-2xs">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-xs font-medium text-slate-300 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span>{formattedToday}</span>
               <span className="text-slate-600">•</span>
@@ -87,11 +114,46 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Sliders className="w-4 h-4" />
             </button>
+
+            {/* Profile / Auth Button */}
+            {!loading && user ? (
+              <button
+                onClick={onOpenProfile}
+                className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition-all cursor-pointer shadow-2xs"
+                id="btn-user-profile"
+                title="View & Edit Profile"
+              >
+                {profile?.photoURL || user.photoURL ? (
+                  <img
+                    src={profile?.photoURL || user.photoURL || ''}
+                    alt="Avatar"
+                    className="w-6 h-6 rounded-lg object-cover ring-1 ring-white/20"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center">
+                    {avatarInitials}
+                  </div>
+                )}
+                <span className="text-xs font-semibold max-w-[90px] truncate hidden sm:inline">
+                  {profile?.displayName || user.displayName || 'Profile'}
+                </span>
+              </button>
+            ) : !loading ? (
+              <button
+                onClick={onOpenAuth}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                id="btn-header-login"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sign In</span>
+              </button>
+            ) : null}
           </div>
         </div>
 
         {/* Mobile Live Time row */}
-        <div className="sm:hidden flex items-center justify-between mt-2.5 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
+        <div className="md:hidden flex items-center justify-between mt-2.5 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="font-medium text-slate-300">{formattedToday}</span>

@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles",
+      "description": "User profiles storing name, email, avatar, and custom attendance preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string" },
+        "weeklyTargetHours": { "type": "number" },
+        "dailyTargetHours": { "type": "number" },
+        "jobTitle": { "type": "string" },
+        "department": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["uid", "email"]
+    },
+    "attendance_records": {
+      "title": "Attendance Records",
+      "description": "Individual daily attendance check-ins and check-outs partitioned by user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "inTime": { "type": "string" },
+        "outTime": { "type": "string" },
+        "breakMinutes": { "type": "number" },
+        "note": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId", "date"]
+    }
+  },
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "request.auth != null && request.auth.uid == $uid",
+        ".write": "request.auth != null && request.auth.uid == $uid"
+      }
+    },
+    "attendance_records": {
+      "$recordId": {
+        ".read": "request.auth != null && resource.data.userId == request.auth.uid",
+        ".write": "request.auth != null && (resource == null || resource.data.userId == request.auth.uid) && request.resource.data.userId == request.auth.uid"
+      }
+    }
+  }
+}

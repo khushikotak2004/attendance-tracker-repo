@@ -1,5 +1,20 @@
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+  role?: string;
+  jobTitle?: string;
+  department?: string;
+  weeklyTargetHours?: number;
+  dailyTargetHours?: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface AttendanceRecord {
   id: string;
+  userId?: string;
   date: string; // YYYY-MM-DD
   inTime: string | null; // ISO 8601 string or null if only out-time was logged
   outTime: string | null; // ISO 8601 string or null if currently clocked in / pending out
